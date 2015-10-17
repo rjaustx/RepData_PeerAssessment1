@@ -1,0 +1,80 @@
+---
+title: "Reproducible Reaseach: Assignment 1"
+output: 
+  html_document: 
+    keep_md: yes
+---
+
+Load libraries and data
+```{r, echo=TRUE}
+library(dplyr)
+library(ggplot2)
+amd <- read.csv("./activity.csv", header = TRUE)
+summary(amd)
+```
+
+Group by date, create histogram and calculate mean and median
+```{r, echo=TRUE}
+#spd = steps per day
+spd <- group_by(amd, date) %>% summarize(stepsperday = sum(steps, na.rm=TRUE)) 
+hist(spd$stepsperday, main="Histogram: Steps per Day", xlab = "Steps", ylab = "Frequency", col = "blue")
+cat("Mean of steps taken: ", mean(spd$stepsperday))
+cat("Median of steps taken: ", median(spd$stepsperday))
+```
+
+Plot average daily activity pattern
+```{r, echo=TRUE}
+adap <- group_by(amd, interval) %>% summarize(steps = mean(steps, na.rm=TRUE)) 
+ggplot(adap, aes(x=interval, y=steps)) +
+  ggtitle("Average daily activity pattern per interval") +
+  geom_line(color="blue")
+cat("Interval with maximum number of steps: ", adap$interval[which.max(adap$steps)])
+```
+
+Imputing missing values: use interval means to replace NAs, use adap from previous code that has interval averages
+``` {r, echo=TRUE}
+cat("Number of intervals with missing steps from raw data: ", sum(is.na(amd$steps)))
+#adap -> interval averages 
+head(adap)
+#find rows with NAs in steps
+na_steps <- is.na(amd$steps)
+#create copy of adap (interval averages) and change column name of steps to interval_avg to prepare for merge
+interval_lookup <- adap
+names(interval_lookup)[names(interval_lookup)=="steps"] <- "interval_avg"
+#merge raw data with interval averages
+amd_mean_na_merged <- merge(amd, interval_lookup, by="interval")
+#order entries to match original file
+amd_mean_na_merged <- amd_mean_na_merged[order(amd_mean_na_merged$date, amd_mean_na_merged$interval),]
+#replace NA steps with interval averages for that interval
+amd_mean_na_merged[na_steps,]$steps <- amd_mean_na_merged[na_steps,]$interval_avg
+#check that all NAs have been replaced
+cat("Number of intervals with missing steps data after replacement: ", sum(is.na(amd_mean_na_merged$steps)))
+```
+
+Histogram of steps per day with Nas imputed
+```{r, echo=TRUE}
+spd_na <- group_by(amd_mean_na_merged, date) %>% summarize(stepsperday = sum(steps, na.rm=TRUE)) 
+hist(spd_na$stepsperday, main="Histogram: Steps per Day", xlab = "Steps", ylab = "Frequency", col = "blue")
+cat("Mean of steps taken with NAs imputed: ", mean(spd_na$stepsperday))
+cat("Median of steps taken with NAs imputed: ", median(spd_na$stepsperday))
+mean_delta <- mean(spd_na$stepsperday) - mean(spd$stepsperday)
+median_delta <- median(spd_na$stepsperday) - median(spd$stepsperday)
+cat("Mean difference - NAs replaced minus NAs dropped: ", mean_delta)
+cat("Median difference - NAs replaced minus NAs dropped: ", median_delta)
+```
+
+Weekday versus Weekend
+```{r, echo=TRUE}
+#create new column (weekday) in raw data file indicating whether date is a weekday or weekend
+#use ifelse to select based on day of the week, convert to factor
+amd_mean_na_merged$weekday <- as.factor(ifelse(weekdays(as.Date(amd_mean_na_merged$date)) %in% c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday"), "Weekday", "Weekend"))
+head(amd_mean_na_merged)
+#group steps by interval and weekday
+adap_week <- group_by(amd_mean_na_merged, interval, weekday) %>% summarize(steps = mean(steps))
+#plot interval and steps with weekday shown in different color
+ggplot(adap_week, aes(x=interval, y=steps, color=weekday)) +
+  geom_line() +
+  ggtitle("Steps per interval, Weekday versus Weekend") +
+  facet_wrap(~weekday, ncol=1, nrow=2)
+```
+
